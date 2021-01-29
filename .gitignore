@@ -1,3 +1,9 @@
+# User Defined Directories and Files
+src/.idea/
+data/tsa/
+data/meta/*.png
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
