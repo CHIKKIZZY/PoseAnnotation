@@ -5,9 +5,15 @@
 # @File    : commons.py
 # @Software: src
 
+import os
+import sys
 import argparse
 import cv2 as cv
 import numpy as np
+import pandas as pd
+
+sys.path.append('../')
+from default import TSA_FORMAT, TEMP_CSV_FILE, NUM_OF_FRAMES, FRM_HGT, FRM_WDT
 
 
 def create_display_window(name, x_pos, y_pos, x_size=384, y_size=495):
@@ -25,43 +31,38 @@ def define_windows(winNames, winPerRow, rWdt, rHgt, xStart=0, yStart=0, titleHgt
         y_p = yStart + int(i / winPerRow) * (rHgt + titleHgt) #345
         create_display_window(winNames[i], x_p, y_p, x_size=rWdt, y_size=rHgt)
 
+def get_png_frame_image(scanRootDir, scanId, fid):
+    imgPath = os.path.join(scanRootDir, scanId, '{}.png'.format(fid))
+    try:
+        frmImg = cv.imread(imgPath)
+        assert (np.max(frmImg) > np.min(frmImg))
+        return frmImg
+    except: #IOError
+        print('\tImage Error: filepath may not exist: {}'.format(imgPath))
+        return None
 
-def set_colors(colorKeys, step=20, pad=10):
-    '''
-    Set a unique, distinct color (BGR) for each color key and return dictionary of key-to-color map
-        Note: infinite loop may occur in current implementation
-    :param colorKeys:   list of color keys
-    :return:            dictionary of key-to-color map
-    '''
-    from random import seed
-    from random import randint
-    colorKeys.sort()
-    seed(len(colorKeys))
-    keyToColorMap = {}
-    usedColors = [(0,0,0), (255,255,255)] # Black cannot be used
-    b, g, r = usedColors[0]
-    for i, key in enumerate(colorKeys):
-        j = i
-        while (b, g, r) in usedColors:
-            s = (step * j) % 220
-            b, g, r = randint(s, 256), randint(s, 256), randint(s, 256)
-            j += 1
-        keyToColorMap[key] = (b, g, r)
-        for b_idx in range(-pad, pad + 1):
-            for g_idx in range(-pad, pad + 1):
-                for r_idx in range(-pad, pad + 1):
-                    usedColors.append((b+b_idx, g+g_idx, r+r_idx))
-    return keyToColorMap
+def get_npy_frame_image(npyFile, scanNpIdx, fid):
+    try:
+        assert(not pd.isna(scanNpIdx))
+        scanNpIdx = int(scanNpIdx)
+        frmImg = npyFile[scanNpIdx, fid]
+        frmImg = cv.resize(frmImg, (FRM_WDT, FRM_HGT),
+                           interpolation=cv.INTER_CUBIC)  # cv.INTER_AREA
+        return frmImg
+    except: #IOError
+        print('\tScan does not have a valid numpy index: {}'.format(scanNpIdx))
+        return None
 
 
 def get_program_instructions():
     return "\n ----------------------------------------------------------------------------------" \
            "\n This program implements a user interface for annotating keypoints in TSA Dataset\n" \
-           "\n The program has the following 3 launch (-m) modes: \n" \
+           "\n The program has the following 5 launch (-m) modes: \n" \
            "\tall     : launch program to load all scans\n" \
            "\tpreview : launch program to load only completely annotated scans\n" \
            "\tannotate: (Default) launch program to load only scans yet to be completed\n" \
-           "\tsample  : launch program and load scans starting with a particular scan\n" \
+           "\tsample  : launch and load scans to annotate starting with the arg passed scanID\n" \
+           "\tfaulty  : launch program loading all faulty scans with unacceptable annotations\n" \
            "\n Below are the program's mouse controls\n" \
            "\tleft-click : mark keypoint with mouse by hovering and left-clicking on it\n" \
            "\tright-click: right-clicking on the mouse will move to next frame, or scan if done\n" \
@@ -98,3 +99,43 @@ def runtime_args():
     # args = vars(ap.parse_args()) # Converts to dictionary format
     args = ap.parse_args()
     return args
+
+
+def encode_dataset():
+    # read and encode dataset
+    subset = 'train'
+    dsHgt, dsWdt = 165, 128 # 110, 85
+    scanRootDir = '../../datasets/tsa/aps_images/dataset/{}_set'.format(subset)
+    wrtPath = '../data/tsa/{}/{}Set_{}x{}.npy'.format(TSA_FORMAT, subset, dsHgt, dsWdt)
+    dfKpt = pd.read_csv(TEMP_CSV_FILE)
+    scanIdList = os.listdir(scanRootDir)
+    nScans = len(scanIdList)
+    imgData = np.zeros(shape=(nScans,NUM_OF_FRAMES,dsHgt,dsWdt,3), dtype=np.uint8)
+
+    # encode images
+    nImages = 0
+    for idx, scanId in enumerate(scanIdList):
+        for fid in range(NUM_OF_FRAMES):
+            imgPath = os.path.join(scanRootDir, scanId, '{}.png'.format(fid))
+            try:
+                frmImg = cv.imread(imgPath)
+                assert (np.max(frmImg) > np.min(frmImg))
+                frmImg = cv.resize(frmImg, (dsWdt, dsHgt), interpolation=cv.INTER_CUBIC)
+                imgData[idx, fid] = frmImg
+                dfKpt.loc[dfKpt['scanID']==scanId, 'Subset'] = subset
+                dfKpt.loc[dfKpt['scanID']==scanId, 'npIndex'] = idx
+                nImages += 1
+            except: #IOError
+                print('\tImage Error: filepath may not exist: {}'.format(imgPath))
+
+        if (idx+1)%100==0 or (idx+1)==nScans:
+            print('{:>7} of {} scans encoded..'.format(idx+1, nScans))
+
+    # save csv and numpy file of encoded images
+    np.save(wrtPath, imgData)
+    dfKpt.to_csv(TEMP_CSV_FILE, encoding='utf-8', index=False)
+
+
+
+if __name__ == "__main__":
+    encode_dataset()

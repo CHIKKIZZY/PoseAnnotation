@@ -16,17 +16,18 @@ import matplotlib.pyplot as plt
 
 sys.path.append('../')
 from reconstruct import project_keypoints_from_3d, plot_3d_pose
+from commons import get_npy_frame_image, get_png_frame_image
 from commons import define_windows, get_program_instructions, runtime_args
+from default import AUTO_SAVE_FREQ, WINDOW_SHAPE, WINDOW_TOP_LEFT, FRM_WDT, FRM_HGT
+from default import MAX_AGG_ERROR, KPTS_ALPHA, ALPHA_KPTS, ALPHABETS_ID, ALPHABET_ORD
+from default import IMAGES_NPFILE, IMAGES_ROOT_DIR, DESCRIPTIONS, RUN_MODES, K_DEFAULT
+from default import SCALE_INCR, CONTR_INCR, KPT_LIMB_ORDER, LIMB_KPTS_PAIRS, KPT_COLORS
+from default import KPTS_CSV_FILE, TEMP_CSV_FILE, METADATA_PATH, POSE3D_FIG_PATH, SUBSETS
 from default import POSE_FIG_WDT, POSE_FIG_HGT, POSE_WIN_TLY, POSE_WIN_TLX, MAX_KPT_ERROR
 from default import LFTSIDE_COLOR, RGTSIDE_COLOR, MIDSIDE_COLOR, FAULTYK_COLOR, WCANVAS_COLOR
 from default import NEXTKPT_COLOR, PENDING_COLOR, INVALID_COLOR, MARKEDK_COLOR, KSHADOW_COLOR
-from default import AUTO_SAVE_FREQ, WINDOW_SHAPE, WINDOW_TOP_LEFT, FRM_WDT, FRM_HGT, RUN_MODES
 from default import KEYPOINTS_ID, KPTS_ID_INDX, KPTS_STACK, N_KEYPOINTS, BRIGT_INCR, BRCNT_INCR
 from default import MARKER_NAME, EMPTY_CELL, NUM_OF_FRAMES, FRAME_VALID_KPTS, PAY_RATE, INFO_TEXT
-from default import IMAGES_ROOT_DIR, KPTS_CSV_FILE, TEMP_CSV_FILE, METADATA_PATH, POSE3D_FIG_PATH
-from default import SCALE_INCR, CONTR_INCR, KPT_LIMB_ORDER, LIMB_KPTS_PAIRS, KPT_COLORS, K_DEFAULT
-from default import MAX_AGG_ERROR, KPTS_ALPHA, ALPHA_KPTS, ALPHABETS_ID, ALPHABET_ORD, DESCRIPTIONS
-
 
 
 def visualize_mouse_event(eventPackage):
@@ -49,16 +50,16 @@ def visualize_mouse_event(eventPackage):
 
 def update_scan_status(isGoodAnnotation):
     global _updateSinceLastAutoSave, _markerMetadata
-    scanStatus = _dfkpt.loc[_dfkpt['scanID']==_scanid, 'Status'].values[0]
+    scanStatus = _dfKpt.loc[_dfKpt['scanID']==_scanId, 'Status'].values[0]
     if pd.isna(scanStatus) and scanStatus!='complete' and isGoodAnnotation:
         # this is a newly completed scan (NOT a revision) with acceptable annotations
         _markerMetadata['completedScans'] += 1
     # mark unique scanID as complete or faulty
     scanStatus = 'complete' if isGoodAnnotation else 'faulty'
-    _dfkpt.loc[_dfkpt['scanID']==_scanid, 'Status'] = scanStatus
+    _dfKpt.loc[_dfKpt['scanID']==_scanId, 'Status'] = scanStatus
     _updateSinceLastAutoSave = True
     print ("\tscan:{} annotation is {} {} will be auto-saved in about {} minutes"
-           .format(_scanid, scanStatus, 'and' if isGoodAnnotation else 'but', AUTO_SAVE_FREQ//60))
+           .format(_scanId, scanStatus, 'and' if isGoodAnnotation else 'but', AUTO_SAVE_FREQ//60))
 
 def update_dataframe_record(fid):
     global _updateSinceLastAutoSave
@@ -72,12 +73,12 @@ def update_dataframe_record(fid):
 
     if len(frmKptsDict.keys())>0:
         # record in data frame
-        _dfkpt.loc[_dfkpt['scanID']==_scanid, frmName] = str(frmKptsDict)
+        _dfKpt.loc[_dfKpt['scanID']==_scanId, frmName] = str(frmKptsDict)
     else:
         # empty cell in data frame
-        _dfkpt.loc[_dfkpt['scanID']==_scanid, frmName] = EMPTY_CELL
+        _dfKpt.loc[_dfKpt['scanID']==_scanId, frmName] = EMPTY_CELL
         # reset value because there is no markings of frame
-        _dfkpt.loc[_dfkpt['scanID']==_scanid, 'Status'] = 'incomplete'
+        _dfKpt.loc[_dfKpt['scanID']==_scanId, 'Status'] = 'incomplete'
     _updateSinceLastAutoSave = True
 
 def record_keypoint_meta(kpt, fid, x, y, e, onlyError=False):
@@ -183,13 +184,13 @@ def log_scan_updated_keypoints_error():
         pose3dError = np.around(_aggErrorPerKpt, 2)
         for kpt, kptIdx in KPTS_ID_INDX.items():
             poseDict[kpt] = tuple(_3dPose[kptIdx]) + (pose3dError[kptIdx],)
-        _dfkpt.loc[_dfkpt['scanID']==_scanid, '3dPose'] = str(poseDict)
+        _dfKpt.loc[_dfKpt['scanID']==_scanId, '3dPose'] = str(poseDict)
 
 def save_progress():
     # permanently writes changes from memory to disk
     global _updateSinceLastAutoSave
     # save keypoint annotations
-    _dfkpt.to_csv(KPTS_CSV_FILE, encoding='utf-8', index=False)
+    _dfKpt.to_csv(KPTS_CSV_FILE, encoding='utf-8', index=False)
     # save metadata information
     with open(METADATA_PATH, 'wb') as file_handle:
         pickle.dump(_markerMetadata, file_handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -395,16 +396,14 @@ def remove_invalid_keypoints(fid):
         if not FRAME_VALID_KPTS[kptIdx, fid]:
             _pendingKpts[fid].remove(kpt)
 
-def annotate_frame(fid, scanDirPath):
-    global _iWinFrameID, _curFrmImage, _transMatrix, _scaleFactor, \
-        _contrastFtr, _brightenFtr, _brigContFtr
+def annotate_frame(fid):
+    global _iWinFrameID, _transMatrix, _scaleFactor, _contrastFtr, _brightenFtr, _brigContFtr
     _transMatrix = np.identity(3, dtype=np.float32) # initialize as identity matrix
     _scaleFactor = 1 # initialize with 1 which has no effect on scaling
     _contrastFtr = 1
     _brightenFtr = 0
     _brigContFtr = 0
     _iWinFrameID = fid
-    _curFrmImage = cv.imread(os.path.join(scanDirPath, '{}.png'.format(fid)))
     altFrmImg = frame_visual_update(fid)
     display(WINDOW_NAME, altFrmImg, fid) # wait if last of triplet
 
@@ -538,8 +537,9 @@ def mouse_event(event, x, y, flags, param):
             _mouseEventPack = [param, fid, 3] # 2: indicates zooming
 
 def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
-    global _dictOfKpts, _pendingKpts, _scanid, _stayOnScan, _changeInScan, _moveDirection, \
-        _annotatedKptsPerFrm, _projectedKptsPerFrm, _3dPose, _aggErrorPerKpt, _markerMetadata
+    global _dictOfKpts, _pendingKpts, _scanId, _curFrmImage, \
+        _stayOnScan, _changeInScan, _moveDirection, _markerMetadata, \
+        _annotatedKptsPerFrm, _projectedKptsPerFrm, _3dPose, _aggErrorPerKpt
 
     _moveDirection = 1
     _dictOfKpts = dict()
@@ -550,9 +550,14 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
     _projectedKptsPerFrm = np.zeros((N_KEYPOINTS, NUM_OF_FRAMES, 2), dtype=np.int32)
     skipScan = False if firstScan=='' else True
 
-    for index, row in _dfkpt.iterrows():
-        _scanid = row['scanID']
-        if skipScan and firstScan!=_scanid: break
+    for index, row in _dfKpt.iterrows():
+        subset = row['Subset']
+        if pd.isna(subset) or subset not in SUBSETS:
+            break  # skip over scans not in subsets
+
+        _scanId = row['scanID']
+        scanNpIdx = row['npIndex']
+        if skipScan and firstScan!=_scanId: break
         else: skipScan = False
 
         # reset variables to default
@@ -607,8 +612,8 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
         recordStatus = row['Status']
         if pd.isna(recordStatus): recordStatus = EMPTY_CELL
         if recordStatus in sampleMode:
-            print('{:>4}. scanID: {}'.format(index, _scanid))
-            scanPath = os.path.join(imagesRootDir, _scanid)
+            print('{:>4}. scanID: {}'.format(index, _scanId))
+            #scanPath = os.path.join(imagesRootDir, _scanId)
 
             cnt = 0
             t0 = time.time()
@@ -616,7 +621,13 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
             _changeInScan = False
             while _stayOnScan:
                 fid = cnt % NUM_OF_FRAMES
-                annotate_frame(fid, scanPath)
+                #_curFrmImage = cv.imread(os.path.join(scanDirPath, '{}.png'.format(fid)))
+                #_curFrmImage = get_png_frame_image(imagesRootDir, _scanId, fid)
+                _curFrmImage = get_npy_frame_image(_npyFile, scanNpIdx, fid)
+                if _curFrmImage is not None:
+                    annotate_frame(fid)
+                elif cnt==(_moveDirection*NUM_OF_FRAMES):
+                    _stayOnScan = False  # break out of infinte-loop
                 cnt += _moveDirection # 1 or -1
             t1 = time.time()
             os.remove(POSE3D_FIG_PATH)
@@ -625,7 +636,7 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
 
 
 if __name__ == "__main__":
-    global _dfkpt, _updateSinceLastAutoSave, _updatePoseImage, _markerMetadata, \
+    global _dfKpt, _npyFile, _updateSinceLastAutoSave, _updatePoseImage, _markerMetadata, \
             HELP_INSTRUCTION, WINDOW_NAME, FONT1, FONT2, LINE1, LINE2
     args = runtime_args()
     mode = args.sampleMode
@@ -648,10 +659,11 @@ if __name__ == "__main__":
         _markerMetadata = {'markerID':markerID, 'completedScans':0,
                            'totalTime':0, 'totalError':np.zeros(N_KEYPOINTS)}
 
-    # load keypoint annotation record and initialize default values
+    # load numpy data and keypoint annotation record and initialize default values
+    _npyFile = np.load(IMAGES_NPFILE, mmap_mode='r')
     if os.path.exists(KPTS_CSV_FILE):
-        _dfkpt = pd.read_csv(KPTS_CSV_FILE)
-    else: _dfkpt = pd.read_csv(TEMP_CSV_FILE)
+        _dfKpt = pd.read_csv(KPTS_CSV_FILE)
+    else: _dfKpt = pd.read_csv(TEMP_CSV_FILE)
     _updateSinceLastAutoSave = False
     _updatePoseImage = True
     

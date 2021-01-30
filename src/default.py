@@ -11,9 +11,6 @@ import matplotlib.pyplot as plt
 
 from mpl_toolkits import mplot3d # <--- This is important for 3d plotting
 
-sys.path.append('../')
-from commons import set_colors
-
 
 def valid_kypts_per_16frames():
     # Keypts:  1   2   3   4   5   6   7   8   9  10  11  12  13  14    # Frames
@@ -56,6 +53,33 @@ def valid_kypts_per_64frames():
     A = np.array(config, dtype=np.bool)
     # transform shape=(64, 13) to shape=(13, 64)
     return np.transpose(A)
+
+def set_colors(colorKeys, step=20, pad=10):
+    '''
+    Set a unique, distinct color (BGR) for each color key and return dictionary of key-to-color map
+        Note: infinite loop may occur in current implementation
+    :param colorKeys:   list of color keys
+    :return:            dictionary of key-to-color map
+    '''
+    from random import seed
+    from random import randint
+    colorKeys.sort()
+    seed(len(colorKeys))
+    keyToColorMap = {}
+    usedColors = [(0,0,0), (255,255,255)] # Black cannot be used
+    b, g, r = usedColors[0]
+    for i, key in enumerate(colorKeys):
+        j = i
+        while (b, g, r) in usedColors:
+            s = (step * j) % 220
+            b, g, r = randint(s, 256), randint(s, 256), randint(s, 256)
+            j += 1
+        keyToColorMap[key] = (b, g, r)
+        for b_idx in range(-pad, pad + 1):
+            for g_idx in range(-pad, pad + 1):
+                for r_idx in range(-pad, pad + 1):
+                    usedColors.append((b+b_idx, g+g_idx, r+r_idx))
+    return keyToColorMap
 
 def get_valid_kypts_per_frame(tsaFormat):
     if tsaFormat == 'aps':
@@ -140,10 +164,13 @@ DESCRIPTIONS = {'Nk' :'Center of neck, in-between the head and shoulder blade',
 
 PAY_RATE = .05 # $ per scan
 EMPTY_CELL = ''
+SUBSETS = ['train']
 TSA_FORMAT = 'aps'
 RUN_MODES = {'all': ['complete', 'incomplete', 'faulty', EMPTY_CELL],
              'annotate': ['incomplete', 'faulty', EMPTY_CELL],
-             'preview': ['complete']}
+             'sample': ['incomplete', 'faulty', EMPTY_CELL],
+             'preview': ['complete'],
+             'faulty': ['faulty']}
 
 FRM_HGT = 660
 FRM_WDT = 512
@@ -193,7 +220,8 @@ MAX_KPT_ERROR = 20  # max allowed error per keypoint annotation
 INFO_TEXT = '{nScans:>4} Completed Scans  Earnings: ${payCost:<6.2f}  ' \
             'Avg. Error: {avgError:<4.1f}  Total Time: {time:.1f} hrs'
 
-IMAGES_ROOT_DIR = '../../datasets/tsa/aps_images/dataset/train_set' #'../data/tsa/{}/'.format(TSA_FORMAT)
+IMAGES_ROOT_DIR = '../../datasets/tsa/aps_images/dataset/{}_set'.format(SUBSETS[0])
+IMAGES_NPFILE = '../data/tsa/{}/{}Set_{}x{}.npy'.format(TSA_FORMAT, SUBSETS[0], 165, 128)
 KPTS_CSV_FILE = '../data/csvs/{}KeypointsAnnotations{}.csv'.format(TSA_FORMAT, '{}')
 TEMP_CSV_FILE = '../data/csvs/{}Template.csv'.format(TSA_FORMAT)
 METADATA_PATH = '../data/meta/meta{}.pickle'
