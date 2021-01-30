@@ -64,7 +64,7 @@ def get_program_instructions():
            "\tsample  : launch program and load scans starting with a particular scan\n" \
            "\n Below are the program's mouse controls\n" \
            "\tleft-click : mark keypoint with mouse by hovering and left-clicking on it\n" \
-           "\tright-click: when done, move to the next frame by left-clicking on the mouse\n" \
+           "\tright-click: right-clicking on the mouse will move to next frame, or scan if done\n" \
            "\tmousewheel : zoom in/out on the image by rolling your mousewheel\n" \
            "\n Below are the program's key controls\n" \
            "\tA-to-N       : undo marking of keypoint corresponding to the letter\n" \
@@ -72,7 +72,7 @@ def get_program_instructions():
            "\tr/delete     : delete all keypoint markings in the frame\n" \
            "\tn/right-arrow: skip to next frame image of scan\n" \
            "\tp/left-arrow : return to previously visited frame image\n" \
-           "\tf/enter      : advance to the next scan after annotation current scan is complete\n" \
+           "\tf/enter      : force advance to the next scan when annotation of scan is complete\n" \
            "\th/up-arrow   : enhance image contrast\n" \
            "\tl/down-arrow : reduce image contrast\n" \
            "\tb            : brighten image\n" \

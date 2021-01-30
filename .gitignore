@@ -2,6 +2,8 @@
 src/.idea/
 data/tsa/
 data/meta/*.png
+data/meta/*John*.pickle
+data/csvs/*John*.csv
 
 
 # Byte-compiled / optimized / DLL files

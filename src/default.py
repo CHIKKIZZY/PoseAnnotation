@@ -141,12 +141,13 @@ DESCRIPTIONS = {'Nk' :'Center of neck, in-between the head and shoulder blade',
 PAY_RATE = .05 # $ per scan
 EMPTY_CELL = ''
 TSA_FORMAT = 'aps'
-RUN_MODES = {'all': ['complete', 'incomplete', EMPTY_CELL],
-             'annotate': ['incomplete', EMPTY_CELL],
+RUN_MODES = {'all': ['complete', 'incomplete', 'faulty', EMPTY_CELL],
+             'annotate': ['incomplete', 'faulty', EMPTY_CELL],
              'preview': ['complete']}
 
 FRM_HGT = 660
 FRM_WDT = 512
+K_DEFAULT = [-1, -1, 0]
 BRIGT_INCR = 5
 BRCNT_INCR = 4
 SCALE_INCR = 0.5
@@ -195,5 +196,5 @@ INFO_TEXT = '{nScans:>4} Completed Scans  Earnings: ${payCost:<6.2f}  ' \
 IMAGES_ROOT_DIR = '../../datasets/tsa/aps_images/dataset/train_set' #'../data/tsa/{}/'.format(TSA_FORMAT)
 KPTS_CSV_FILE = '../data/csvs/{}KeypointsAnnotations{}.csv'.format(TSA_FORMAT, '{}')
 TEMP_CSV_FILE = '../data/csvs/{}Template.csv'.format(TSA_FORMAT)
-METADATA_PATH = '../data/meta/{}_meta.pickle'
+METADATA_PATH = '../data/meta/meta{}.pickle'
 POSE3D_FIG_PATH = '../data/meta/pose3d.png'

@@ -17,7 +17,6 @@ import matplotlib.pyplot as plt
 sys.path.append('../')
 from reconstruct import project_keypoints_from_3d, plot_3d_pose
 from commons import define_windows, get_program_instructions, runtime_args
-from default import SCALE_INCR, CONTR_INCR, KPT_LIMB_ORDER, LIMB_KPTS_PAIRS, KPT_COLORS
 from default import POSE_FIG_WDT, POSE_FIG_HGT, POSE_WIN_TLY, POSE_WIN_TLX, MAX_KPT_ERROR
 from default import LFTSIDE_COLOR, RGTSIDE_COLOR, MIDSIDE_COLOR, FAULTYK_COLOR, WCANVAS_COLOR
 from default import NEXTKPT_COLOR, PENDING_COLOR, INVALID_COLOR, MARKEDK_COLOR, KSHADOW_COLOR
@@ -25,6 +24,7 @@ from default import AUTO_SAVE_FREQ, WINDOW_SHAPE, WINDOW_TOP_LEFT, FRM_WDT, FRM_
 from default import KEYPOINTS_ID, KPTS_ID_INDX, KPTS_STACK, N_KEYPOINTS, BRIGT_INCR, BRCNT_INCR
 from default import MARKER_NAME, EMPTY_CELL, NUM_OF_FRAMES, FRAME_VALID_KPTS, PAY_RATE, INFO_TEXT
 from default import IMAGES_ROOT_DIR, KPTS_CSV_FILE, TEMP_CSV_FILE, METADATA_PATH, POSE3D_FIG_PATH
+from default import SCALE_INCR, CONTR_INCR, KPT_LIMB_ORDER, LIMB_KPTS_PAIRS, KPT_COLORS, K_DEFAULT
 from default import MAX_AGG_ERROR, KPTS_ALPHA, ALPHA_KPTS, ALPHABETS_ID, ALPHABET_ORD, DESCRIPTIONS
 
 
@@ -47,16 +47,18 @@ def visualize_mouse_event(eventPackage):
     elif eventCode == 3:
         refresh_display(windowName, fid)
 
-def mark_scan_complete():
+def update_scan_status(isGoodAnnotation):
     global _updateSinceLastAutoSave, _markerMetadata
-    if pd.isna(_dfkpt.loc[_dfkpt['scanID']==_scanid, 'Status'].values[0]):
-        # newly completed scan. NOT a revisited scan
+    scanStatus = _dfkpt.loc[_dfkpt['scanID']==_scanid, 'Status'].values[0]
+    if pd.isna(scanStatus) and scanStatus!='complete' and isGoodAnnotation:
+        # this is a newly completed scan (NOT a revision) with acceptable annotations
         _markerMetadata['completedScans'] += 1
-    # mark unique scanID as completed
-    _dfkpt.loc[_dfkpt['scanID']==_scanid, 'Status'] = 'complete' # scan annotation is complete
+    # mark unique scanID as complete or faulty
+    scanStatus = 'complete' if isGoodAnnotation else 'faulty'
+    _dfkpt.loc[_dfkpt['scanID']==_scanid, 'Status'] = scanStatus
     _updateSinceLastAutoSave = True
-    print ("\tscan:{} annotation is complete and will be auto-saved in about {} minutes"
-           .format(_scanid, AUTO_SAVE_FREQ//60))
+    print ("\tscan:{} annotation is {} {} will be auto-saved in about {} minutes"
+           .format(_scanid, scanStatus, 'and' if isGoodAnnotation else 'but', AUTO_SAVE_FREQ//60))
 
 def update_dataframe_record(fid):
     global _updateSinceLastAutoSave
@@ -68,7 +70,6 @@ def update_dataframe_record(fid):
         if metaInfo[0]>=0 and metaInfo[1]>=0:
             frmKptsDict[kpt] = metaInfo
 
-    #if frmKptsDict is not None:
     if len(frmKptsDict.keys())>0:
         # record in data frame
         _dfkpt.loc[_dfkpt['scanID']==_scanid, frmName] = str(frmKptsDict)
@@ -96,18 +97,15 @@ def undo_previous_marking(windowName, fid):
     global _dictOfKpts, _pendingKpts
     lastKpt = previously_marked_keypoint(fid)
     if lastKpt is not None:
-        #del _dictOfKpts[fid][lastKpt]  # delete previous kpt entry
-        _dictOfKpts[fid][lastKpt][:2] = [-1, -1]  # don't reset error because of total error tracking
+        _dictOfKpts[fid][lastKpt][:2] = K_DEFAULT[:2]  # don't reset error coz total error tracking
         _pendingKpts[fid].append(lastKpt)  # set previous kpt to immediate pending kpt
         refresh_display(windowName, fid)
 
 def reset_markings(windowName, fid):
     global _dictOfKpts, _pendingKpts
-    # do nothing if kptDict is already empty
-    #_dictOfKpts[fid] = None  # empty dictionary
     # reset annotations to default values
     for kpt in _dictOfKpts[fid].keys():
-        _dictOfKpts[fid][kpt][:2] = [-1, -1]  # don't reset error because of total error tracking
+        _dictOfKpts[fid][kpt][:2] = K_DEFAULT[:2]  # don't reset error coz total error tracking
     _pendingKpts[fid] = KPTS_STACK.copy()
     remove_invalid_keypoints(fid)
     refresh_display(windowName, fid)
@@ -115,9 +113,7 @@ def reset_markings(windowName, fid):
 def delete_keypoint_marking(windowName, fid, alphaId):
     global _dictOfKpts, _pendingKpts
     kpt = ALPHA_KPTS[alphaId]
-    #if _dictOfKpts[fid].get(kpt) is not None:
-    #del _dictOfKpts[fid][kpt]  # delete kpt entry
-    _dictOfKpts[fid][kpt][:2] = [-1, -1]  # don't reset error because of total error tracking
+    _dictOfKpts[fid][kpt][:2] = K_DEFAULT[:2]  # don't reset error because of total error tracking
     _pendingKpts[fid].append(kpt)  # set kpt to immediate pending kpt
     refresh_display(windowName, fid)
 
@@ -127,7 +123,7 @@ def slide(fid, direction=1):
     _moveDirection = direction
     _pauseForEvent = False
 
-def next_scan(fid):
+def next_scan(fid, forceSkip=False):
     global _pauseForEvent, _stayOnScan
 
     goodMarkings = True
@@ -152,10 +148,14 @@ def next_scan(fid):
                 goodMarkings = False
                 break
 
-    if scanComplete and goodMarkings:
+    if forceSkip:
+        moveToNextScan = scanComplete
+    else: moveToNextScan = scanComplete and goodMarkings
+
+    if moveToNextScan:
         update_dataframe_record(fid)
         log_scan_updated_keypoints_error()
-        mark_scan_complete()  # scan is Marked only if all frames are reviewed
+        update_scan_status(goodMarkings)  # scan is Marked only if all frames are reviewed
         _pauseForEvent = False
         _stayOnScan = False
 
@@ -176,10 +176,6 @@ def log_scan_updated_keypoints_error():
     # record kpts error alongside coordinates in each frame with changes
     for fid in range(NUM_OF_FRAMES):
         update_dataframe_record(fid)
-        #frmKptsDict = _dictOfKpts[fid]
-        #if frmKptsDict is not None:
-        #    frmName = 'Frame{}'.format(fid)
-        #    _dfkpt.loc[_dfkpt['scanID']==_scanid, frmName] = str(frmKptsDict)
 
     # record up-to-date 3d-pose
     if np.any(_3dPose >= 0):
@@ -254,13 +250,13 @@ def highlight_next_keypoint_suggested_position(frmImage, fid, nextKpt, radius=64
             # kpt has been projected to frame
             radius = int(radius * _scaleFactor)
             x, y = transform_point(suggestedLoc[0], suggestedLoc[1], _transMatrix)
-            cv.circle(mask, (x, y), radius, (255,255,255), thickness=-1, lineType=cv.FILLED)
+            cv.circle(mask, (x, y), radius, (255,255,255), thickness=-1, lineType=LINE2)
         return cv.addWeighted(frmImage, 0.8, mask, 0.2, 0)
     return frmImage
 
 def frame_visual_update(fid, yMargin=30, xMargin=520, xSize=180, ySize=40):
     global _updatePoseImage, _poseImage
-    winImage = np.full(WINDOW_SHAPE, fill_value=WCANVAS_COLOR, dtype=np.uint8)
+    winImg = np.full(WINDOW_SHAPE, fill_value=WCANVAS_COLOR, dtype=np.uint8)
     nPending = len(_pendingKpts[fid])
     nextKpt = None if nPending==0 else _pendingKpts[fid][nPending-1]  # at end of list (stack)
 
@@ -277,42 +273,36 @@ def frame_visual_update(fid, yMargin=30, xMargin=520, xSize=180, ySize=40):
             _updatePoseImage = False
             _poseImage = cv.imread(POSE3D_FIG_PATH)[:, 90:570]
             _poseImage = np.where(_poseImage==255, WCANVAS_COLOR, _poseImage)
-        winImage[yStart:yEnd, xStart:xEnd] = _poseImage
-    else: winImage[yStart:yEnd, xStart:xEnd] = WCANVAS_COLOR
+        winImg[yStart:yEnd, xStart:xEnd] = _poseImage
+    else: winImg[yStart:yEnd, xStart:xEnd] = WCANVAS_COLOR
 
     # Frame title label
     title = 'Frame: {:<2}'.format(fid)
-    lablLoc = (xMargin, yMargin)
-    cv.putText(winImage, title, lablLoc, cv.FONT_HERSHEY_COMPLEX_SMALL,
-               0.8, (  0,  0,  0), 2, lineType=cv.LINE_AA)
-    cv.putText(winImage, title, lablLoc, cv.FONT_HERSHEY_COMPLEX_SMALL,
-               0.8, (255,255,255), 1, lineType=cv.LINE_AA)
+    labPos = (xMargin, yMargin)
+    cv.putText(winImg, title, labPos, FONT1, 0.8, (  0,  0,  0), 2, lineType=LINE1)
+    cv.putText(winImg, title, labPos, FONT1, 0.8, (255,255,255), 1, lineType=LINE1)
 
     # display metadata information
     if nextKpt is not None:
         kptDescription = ['{} Description:'.format(nextKpt), DESCRIPTIONS[nextKpt]]
         for idx, info in enumerate(kptDescription):
-            yPos, fontSize = 500 + (30*idx), 1. - (0.1*idx)
-            cv.putText(winImage, info, (720, yPos), cv.FONT_HERSHEY_PLAIN,
-                       fontSize, KPT_COLORS[nextKpt], 2, lineType=cv.LINE_AA)
-            cv.putText(winImage, info, (720, yPos), cv.FONT_HERSHEY_PLAIN,
-                       fontSize, KSHADOW_COLOR, 1, lineType=cv.LINE_AA)
+            yPos, fSize = 500 + (30*idx), 1. - (0.1*idx)
+            txtPos = (720, yPos)
+            cv.putText(winImg, info, txtPos, FONT2, fSize, KPT_COLORS[nextKpt], 2, lineType=LINE1)
+            cv.putText(winImg, info, txtPos, FONT2, fSize, KSHADOW_COLOR, 1, lineType=LINE1)
     infoText = INFO_TEXT.format(nScans=_markerMetadata['completedScans'],
                                 payCost=_markerMetadata['completedScans']*PAY_RATE,
                                 avgError=np.mean(_markerMetadata['totalError']),
                                 time=_markerMetadata['totalTime']/3600)
-    cv.putText(winImage, infoText, (xMargin,640), cv.FONT_HERSHEY_COMPLEX_SMALL,
-               0.65, (  0,  0,  0), 1, lineType=cv.LINE_AA)
+    cv.putText(winImg, infoText, (xMargin,640), FONT1, 0.65, (0,0,0), 1, lineType=LINE1)
 
     # draw edges between keypoints
     frmKptsDict = _dictOfKpts[fid]
-    #if frmKptsDict is not None:
     for limb, kptPair in LIMB_KPTS_PAIRS.items():
         kptA, kptB = kptPair
         if kptA[0]=='R' or kptB[0]=='R': lineColor = RGTSIDE_COLOR
         elif kptA[0]=='L' or kptB[0]=='L': lineColor = LFTSIDE_COLOR
         else: lineColor = MIDSIDE_COLOR
-        #kptAIdx, kptBIdx = KPTS_ID_INDX[kptA], KPTS_ID_INDX[kptB]
         kptAInfo = frmKptsDict.get(kptA, None)
         kptBInfo = frmKptsDict.get(kptB, None)
         if kptAInfo is not None and kptBInfo is not None:
@@ -334,14 +324,12 @@ def frame_visual_update(fid, yMargin=30, xMargin=520, xSize=180, ySize=40):
 
         # keypoint location
         if frmKptsDict.get(kpt, None) is not None:
-        #if FRAME_VALID_KPTS[kptIdx, fid]:
             xKpt, yKpt, kptFrmError = frmKptsDict[kpt]
-
             # pinpoint keypoint on image
             if xKpt>=0 and yKpt>=0:
                 tx, ty = transform_point(xKpt, yKpt, _transMatrix)
-                cv.circle(frmImage, (tx, ty), 7, KSHADOW_COLOR, thickness=-1, lineType=cv.FILLED)
-                cv.circle(frmImage, (tx, ty), 5, KPT_COLORS[kpt], thickness=-1, lineType=cv.FILLED)
+                cv.circle(frmImage, (tx, ty), 7, KSHADOW_COLOR, thickness=-1, lineType=LINE2)
+                cv.circle(frmImage, (tx, ty), 5, KPT_COLORS[kpt], thickness=-1, lineType=LINE2)
 
         # keypoint information box
         yPosA = yMargin + ((idx + 1) * ySize)
@@ -354,34 +342,32 @@ def frame_visual_update(fid, yMargin=30, xMargin=520, xSize=180, ySize=40):
             bdrRecB = (xMargin+xSize+4, yPosB-ym+4)
             kptRecB = (xMargin+xSize, yPosB-ym)
             ym = 15
-            cv.rectangle(winImage, bdrRecA, bdrRecB, KSHADOW_COLOR, -1)
-            cv.rectangle(winImage, kptRecA, kptRecB, NEXTKPT_COLOR, -1)
+            cv.rectangle(winImg, bdrRecA, bdrRecB, KSHADOW_COLOR, -1)
+            cv.rectangle(winImg, kptRecA, kptRecB, NEXTKPT_COLOR, -1)
         elif kpt in _pendingKpts[fid]:
             ym = 20
-            cv.rectangle(winImage, kptRecA, kptRecB, PENDING_COLOR, -1)
+            cv.rectangle(winImg, kptRecA, kptRecB, PENDING_COLOR, -1)
         elif not FRAME_VALID_KPTS[kptIdx, fid]:
             ym = 20
-            cv.rectangle(winImage, kptRecA, kptRecB, INVALID_COLOR, -1)
+            cv.rectangle(winImg, kptRecA, kptRecB, INVALID_COLOR, -1)
         else: # marked
             ym = 20
             if kptFrmError>MAX_KPT_ERROR or kptAggError>MAX_AGG_ERROR:
                 anotKptColor = FAULTYK_COLOR
             else: anotKptColor = MARKEDK_COLOR
-            cv.rectangle(winImage, kptRecA, kptRecB, anotKptColor, -1)
+            cv.rectangle(winImg, kptRecA, kptRecB, anotKptColor, -1)
 
         # keypoint information text
-        lablLoc = (xMargin+5, yPosA+5)
+        labPos = (xMargin+5, yPosA+5)
         if FRAME_VALID_KPTS[kptIdx, fid]:
             kptInfo = '{:>2}.  {:<3} {:>5.1f} {:>5.1f}'.\
                         format(kptAlpha, kpt, kptFrmError, kptAggError)
-            cv.putText(winImage, kptInfo, lablLoc, cv.FONT_HERSHEY_PLAIN,
-                       0.9, KSHADOW_COLOR, 2, lineType=cv.LINE_AA)
-            cv.putText(winImage, kptInfo, lablLoc, cv.FONT_HERSHEY_PLAIN,
-                       0.9, KPT_COLORS[kpt], 1, lineType=cv.LINE_AA)
+            cv.putText(winImg, kptInfo, labPos, FONT2, 0.9, KSHADOW_COLOR, 2, lineType=LINE1)
+            cv.putText(winImg, kptInfo, labPos, FONT2, 0.9, KPT_COLORS[kpt], 1, lineType=LINE1)
 
     frmImage = highlight_next_keypoint_suggested_position(frmImage, fid, nextKpt)
-    winImage[:FRM_HGT, :FRM_WDT] = frmImage
-    return winImage
+    winImg[:FRM_HGT, :FRM_WDT] = frmImage
+    return winImg
 
 def previously_marked_keypoint(fid):
     frmPendingKpts = _pendingKpts[fid]
@@ -477,7 +463,7 @@ def display(windowName, displayImg, fid, wait=True):
             slide(fid, direction=-1)
         # if the 'f' or 'enter' key is pressed, break from loop and go to the next scan
         elif key==ord("f") or key&255==13:
-            next_scan(fid)
+            next_scan(fid, forceSkip=True)
         # if the 'e' or 'esc' key is pressed, or window is closed
         # write dataframe to csv file before exiting the program
         elif key==ord("q") or key==27 or cv.getWindowProperty(windowName,0)<0:
@@ -501,7 +487,6 @@ def initiate_3dpose_bundle_adjustment(ListOfKpts):
             kptErrorPerFrm = np.around(kptErrorPerFrm, 2)
             for idx, fid in enumerate(frmsOfKpt):
                 record_keypoint_meta(kpt, fid, None, None, kptErrorPerFrm[idx], onlyError=True)
-                #_dictOfKpts[fid][kpt][2] = kptErrorPerFrm[idx]
 
 def mouse_event(event, x, y, flags, param):
     # grab references to the global variables
@@ -517,9 +502,7 @@ def mouse_event(event, x, y, flags, param):
             xPos, yPos = transform_point(x, y, np.linalg.inv(_transMatrix))
 
             # make note of original marked point
-            #if _dictOfKpts[fid] is None: _dictOfKpts[fid] = dict()
             record_keypoint_meta(kpt, fid, xPos, yPos, None)
-            #_dictOfKpts[fid][kpt] = [xPos, yPos, 0] # (x, y, e)
 
             # reconstruct keypoint's 3d position
             _updatePoseImage = True
@@ -572,11 +555,9 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
         if skipScan and firstScan!=_scanid: break
         else: skipScan = False
 
-        # read keypoint marking for each frame
-        _dictOfKpts.clear() #= dict()
-        _pendingKpts.clear() #= dict()
-
         # reset variables to default
+        _dictOfKpts.clear()
+        _pendingKpts.clear()
         _3dPose[:,:] = -1
         _aggErrorPerKpt[:] = 0.
         _annotatedKptsPerFrm[:,:,:] = -1
@@ -592,7 +573,6 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
                 _3dPose[kptIdx] = pose3dDict[kpt][:3]
                 _aggErrorPerKpt[kptIdx] = pose3dDict[kpt][3] # last for 3d-pose
 
-            #initiate_3dpose_bundle_adjustment(KEYPOINTS_ID)
             if np.any(_3dPose[:,1:] >= 0): # Note: -256<x<256, x may be <0
                 plot_3d_pose(_3dPose, error=_aggErrorPerKpt)
 
@@ -610,7 +590,7 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
                 for kpt in KEYPOINTS_ID:
                     kptIdx = KPTS_ID_INDX[kpt]
                     if FRAME_VALID_KPTS[kptIdx, fid]:
-                        frmKptsDict[kpt] = [-1, -1, 0]  # Default values for x,y,e
+                        frmKptsDict[kpt] = K_DEFAULT  # Default values for x,y,e=[-1,-1,0]
                 _dictOfKpts[fid] = frmKptsDict
             else:
                 # load annotations from record
@@ -621,7 +601,7 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
                         _pendingKpts[fid].remove(kpt)
                 # fill in dummy/placeholder info for keypoints yet to be annotated
                 for kpt in _pendingKpts[fid]:
-                    frmKptsDict[kpt] = [-1, -1, 0]  # Default values for x,y,e
+                    frmKptsDict[kpt] = K_DEFAULT  # Default values for x,y,e=[-1,-1,0]
                 _dictOfKpts[fid] = frmKptsDict
 
         recordStatus = row['Status']
@@ -646,11 +626,10 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
 
 if __name__ == "__main__":
     global _dfkpt, _updateSinceLastAutoSave, _updatePoseImage, _markerMetadata, \
-            HELP_INSTRUCTION, WINDOW_NAME
+            HELP_INSTRUCTION, WINDOW_NAME, FONT1, FONT2, LINE1, LINE2
     args = runtime_args()
     mode = args.sampleMode
     startScan = args.scanSample
-
     HELP_INSTRUCTION = get_program_instructions()
 
     # load or set user/marker metadata information tracker
@@ -678,6 +657,10 @@ if __name__ == "__main__":
     
     # create windows and set mouse event listeners
     WINDOW_NAME = 'TSA Scan Keypoints/Joint Annotations'
+    FONT1 = cv.FONT_HERSHEY_COMPLEX_SMALL
+    FONT2 = cv.FONT_HERSHEY_PLAIN
+    LINE1 = cv.LINE_AA
+    LINE2 = cv.FILLED
     define_windows([WINDOW_NAME], 1, WINDOW_SHAPE[1], WINDOW_SHAPE[0],
                    yStart=WINDOW_TOP_LEFT[1], xStart=WINDOW_TOP_LEFT[0])
     # set mouse callback function for window
