@@ -221,7 +221,7 @@ INFO_TEXT = '{nScans:>4} Completed Scans  Earnings: ${payCost:<6.2f}  ' \
             'Avg. Error: {avgError:<4.1f}  Total Time: {time:.1f} hrs'
 
 IMAGES_ROOT_DIR = '../../datasets/tsa/aps_images/dataset/{}_set'.format(SUBSETS[0])
-IMAGES_NPFILE = '../data/tsa/{}/{}Set_{}x{}.npy'.format(TSA_FORMAT, SUBSETS[0], 165, 128)
+IMAGES_NPFILE = '../data/tsa/{}/{}Set_{}x{}.npy'.format(TSA_FORMAT, SUBSETS[0], 660, 512)
 KPTS_CSV_FILE = '../data/csvs/{}KeypointsAnnotations{}.csv'.format(TSA_FORMAT, '{}')
 TEMP_CSV_FILE = '../data/csvs/{}Template.csv'.format(TSA_FORMAT)
 METADATA_PATH = '../data/meta/meta{}.pickle'
