@@ -1,0 +1,7 @@
+numpy>=1.13
+matplotlib
+opencv-contrib-python==3.4.1.15
+setuptools
+Cython
+scipy
+pandas

@@ -49,9 +49,11 @@ def plot_3d_pose(points3d, error=None, display=False):
             AX_SP.plot(xline, yline, zline, color, zdir='z')
 
     # Data for three-dimensional keypoints
-    zData = yKpts
-    xData = xKpts
-    yData = zKpts
+    validKptIndexes = np.argwhere(yKpts>=0).flatten()
+    zData = yKpts[validKptIndexes]
+    xData = xKpts[validKptIndexes]
+    yData = zKpts[validKptIndexes]
+    error = error[validKptIndexes]
     AX_SP.scatter3D(xData, yData, zData, c=error, cmap='summer') #RdYlGn
 
     if display: plt.pause(0.001)

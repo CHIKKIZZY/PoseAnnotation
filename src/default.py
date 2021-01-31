@@ -174,7 +174,7 @@ RUN_MODES = {'all': ['complete', 'incomplete', 'faulty', EMPTY_CELL],
 
 FRM_HGT = 660
 FRM_WDT = 512
-K_DEFAULT = [-1, -1, 0]
+K_DEFAULT = (-1, -1, 0)
 BRIGT_INCR = 5
 BRCNT_INCR = 4
 SCALE_INCR = 0.5

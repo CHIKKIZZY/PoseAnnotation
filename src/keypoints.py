@@ -30,6 +30,26 @@ from default import KEYPOINTS_ID, KPTS_ID_INDX, KPTS_STACK, N_KEYPOINTS, BRIGT_I
 from default import MARKER_NAME, EMPTY_CELL, NUM_OF_FRAMES, FRAME_VALID_KPTS, PAY_RATE, INFO_TEXT
 
 
+def save_progress():
+    # permanently writes changes from memory to disk
+    global _updateSinceLastAutoSave
+    # save keypoint annotations
+    _dfKpt.to_csv(KPTS_CSV_FILE, encoding='utf-8', index=False)
+    # save metadata information
+    with open(METADATA_PATH, 'wb') as file_handle:
+        pickle.dump(_markerMetadata, file_handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # reset auto-save tracker
+    _updateSinceLastAutoSave = False # reset change
+
+def periodic_save():
+    # periodically save data frame by writing to csv and json
+    if _updateSinceLastAutoSave:
+        save_progress()
+        print ("\tAlert: Periodic auto-save on {}".format(time.ctime()))
+    # sleep for X seconds then recursively call function
+    time.sleep(AUTO_SAVE_FREQ)
+    periodic_save()
+
 def visualize_mouse_event(eventPackage):
     global _mouseEventPack
     windowName, fid, eventCode = eventPackage
@@ -186,26 +206,6 @@ def log_scan_updated_keypoints_error():
             poseDict[kpt] = tuple(_3dPose[kptIdx]) + (pose3dError[kptIdx],)
         _dfKpt.loc[_dfKpt['scanID']==_scanId, '3dPose'] = str(poseDict)
 
-def save_progress():
-    # permanently writes changes from memory to disk
-    global _updateSinceLastAutoSave
-    # save keypoint annotations
-    _dfKpt.to_csv(KPTS_CSV_FILE, encoding='utf-8', index=False)
-    # save metadata information
-    with open(METADATA_PATH, 'wb') as file_handle:
-        pickle.dump(_markerMetadata, file_handle, protocol=pickle.HIGHEST_PROTOCOL)
-    # reset auto-save tracker
-    _updateSinceLastAutoSave = False # reset change
-
-def periodic_save():
-    # periodically save data frame by writing to csv and json
-    if _updateSinceLastAutoSave:
-        save_progress()
-        print ("\tAlert: Periodic auto-save on {}".format(time.ctime()))
-    # sleep for X seconds then recursively call function
-    time.sleep(AUTO_SAVE_FREQ)
-    periodic_save()
-
 def transform_point(xcord, ycord, transMatrix):
     # applies transformation matrix on 2D point
     hpoint = transMatrix.dot([xcord, ycord, 1])
@@ -224,7 +224,7 @@ def image_transform(copiedImg, transMatrix):
 
 def adjsut_brightness(image, brightness, contrast):
     # Lighten/darken image by adjusting image brightness and contrast
-    #assert(-127<=brightness<=127 and -127<=contrast<=127)
+    assert(-127<=brightness<=127 and -127<=contrast<=127), '{} v. {}'.format(brightness, contrast)
     img = np.int32(image)
     img = img * (contrast / 127 + 1) - contrast + brightness
     img = np.clip(img, 0, 255)
@@ -412,8 +412,7 @@ def refresh_display(windowName, fid):
     display(windowName, altFrmImg, fid)
 
 def display(windowName, displayImg, fid, wait=True):
-    global _dictOfKpts, _pendingKpts, _contrastFtr, _brightenFtr, _brigContFtr, \
-        _pauseForEvent, _mouseEventPack
+    global _pendingKpts, _contrastFtr, _brightenFtr, _brigContFtr, _pauseForEvent, _mouseEventPack
     # show all flagged frames of a scan for marking
     _pauseForEvent = wait
     _mouseEventPack = [windowName, fid, 0]
@@ -485,7 +484,8 @@ def initiate_3dpose_bundle_adjustment(ListOfKpts):
             _aggErrorPerKpt[kptIdx] = np.sum(kptErrorPerFrm)
             kptErrorPerFrm = np.around(kptErrorPerFrm, 2)
             for idx, fid in enumerate(frmsOfKpt):
-                record_keypoint_meta(kpt, fid, None, None, kptErrorPerFrm[idx], onlyError=True)
+                if areAnnotatedKpts[idx]:
+                    record_keypoint_meta(kpt, fid, None, None, kptErrorPerFrm[idx], onlyError=True)
 
 def mouse_event(event, x, y, flags, param):
     # grab references to the global variables
@@ -554,6 +554,10 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
         subset = row['Subset']
         if pd.isna(subset) or subset not in SUBSETS:
             break  # skip over scans not in subsets
+        recordStatus = row['Status']
+        if pd.isna(recordStatus): recordStatus = EMPTY_CELL
+        if recordStatus not in sampleMode:
+            break  # skip over scans not in record status type
 
         _scanId = row['scanID']
         scanNpIdx = row['npIndex']
@@ -561,6 +565,8 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
         else: skipScan = False
 
         # reset variables to default
+        #_dictOfKpts = dict()
+        #_pendingKpts = dict()
         _dictOfKpts.clear()
         _pendingKpts.clear()
         _3dPose[:,:] = -1
@@ -595,7 +601,7 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
                 for kpt in KEYPOINTS_ID:
                     kptIdx = KPTS_ID_INDX[kpt]
                     if FRAME_VALID_KPTS[kptIdx, fid]:
-                        frmKptsDict[kpt] = K_DEFAULT  # Default values for x,y,e=[-1,-1,0]
+                        frmKptsDict[kpt] = list(K_DEFAULT)  # Default values for x,y,e=[-1,-1,0]
                 _dictOfKpts[fid] = frmKptsDict
             else:
                 # load annotations from record
@@ -606,33 +612,33 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
                         _pendingKpts[fid].remove(kpt)
                 # fill in dummy/placeholder info for keypoints yet to be annotated
                 for kpt in _pendingKpts[fid]:
-                    frmKptsDict[kpt] = K_DEFAULT  # Default values for x,y,e=[-1,-1,0]
+                    frmKptsDict[kpt] = list(K_DEFAULT)  # Default values for x,y,e=[-1,-1,0]
                 _dictOfKpts[fid] = frmKptsDict
 
-        recordStatus = row['Status']
-        if pd.isna(recordStatus): recordStatus = EMPTY_CELL
-        if recordStatus in sampleMode:
-            print('{:>4}. scanID: {}'.format(index, _scanId))
-            #scanPath = os.path.join(imagesRootDir, _scanId)
+        #recordStatus = row['Status']
+        #if pd.isna(recordStatus): recordStatus = EMPTY_CELL
+        #if recordStatus in sampleMode:
+        print('{:>4}. scanID: {}'.format(index, _scanId))
+        #scanPath = os.path.join(imagesRootDir, _scanId)
 
-            cnt = 0
-            t0 = time.time()
-            _stayOnScan = True
-            _changeInScan = False
-            while _stayOnScan:
-                fid = cnt % NUM_OF_FRAMES
-                #_curFrmImage = cv.imread(os.path.join(scanDirPath, '{}.png'.format(fid)))
-                #_curFrmImage = get_png_frame_image(imagesRootDir, _scanId, fid)
-                _curFrmImage = get_npy_frame_image(_npyFile, scanNpIdx, fid)
-                if _curFrmImage is not None:
-                    annotate_frame(fid)
-                elif cnt==(_moveDirection*NUM_OF_FRAMES):
-                    _stayOnScan = False  # break out of infinte-loop
-                cnt += _moveDirection # 1 or -1
-            t1 = time.time()
-            os.remove(POSE3D_FIG_PATH)
-            if _changeInScan:
-                _markerMetadata['totalTime'] += t1-t0
+        cnt = 0
+        t0 = time.time()
+        _stayOnScan = True
+        _changeInScan = False
+        while _stayOnScan:
+            fid = cnt % NUM_OF_FRAMES
+            #_curFrmImage = cv.imread(os.path.join(scanDirPath, '{}.png'.format(fid)))
+            #_curFrmImage = get_png_frame_image(imagesRootDir, _scanId, fid)
+            _curFrmImage = get_npy_frame_image(_npyFile, scanNpIdx, fid)
+            if _curFrmImage is not None:
+                annotate_frame(fid)
+            elif cnt==(_moveDirection*NUM_OF_FRAMES):
+                _stayOnScan = False  # break out of infinte-loop
+            cnt += _moveDirection # 1 or -1
+        t1 = time.time()
+        os.remove(POSE3D_FIG_PATH)
+        if _changeInScan:
+            _markerMetadata['totalTime'] += t1-t0
 
 
 if __name__ == "__main__":
