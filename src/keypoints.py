@@ -18,16 +18,16 @@ sys.path.append('../')
 from reconstruct import project_keypoints_from_3d, plot_3d_pose
 from commons import get_npy_frame_image, get_png_frame_image
 from commons import define_windows, get_program_instructions, runtime_args
-from default import AUTO_SAVE_FREQ, WINDOW_SHAPE, WINDOW_TOP_LEFT, FRM_WDT, FRM_HGT
-from default import MAX_AGG_ERROR, KPTS_ALPHA, ALPHA_KPTS, ALPHABETS_ID, ALPHABET_ORD
 from default import IMAGES_NPFILE, IMAGES_ROOT_DIR, DESCRIPTIONS, RUN_MODES, K_DEFAULT
 from default import SCALE_INCR, CONTR_INCR, KPT_LIMB_ORDER, LIMB_KPTS_PAIRS, KPT_COLORS
 from default import KPTS_CSV_FILE, TEMP_CSV_FILE, METADATA_PATH, POSE3D_FIG_PATH, SUBSETS
-from default import POSE_FIG_WDT, POSE_FIG_HGT, POSE_WIN_TLY, POSE_WIN_TLX, MAX_KPT_ERROR
+from default import POSE_FIG_WDT, POSE_FIG_HGT, POSE_WIN_TLY, POSE_WIN_TLX, MAX_AGG_ERROR
 from default import LFTSIDE_COLOR, RGTSIDE_COLOR, MIDSIDE_COLOR, FAULTYK_COLOR, WCANVAS_COLOR
 from default import NEXTKPT_COLOR, PENDING_COLOR, INVALID_COLOR, MARKEDK_COLOR, KSHADOW_COLOR
 from default import KEYPOINTS_ID, KPTS_ID_INDX, KPTS_STACK, N_KEYPOINTS, BRIGT_INCR, BRCNT_INCR
+from default import KPTS_ALPHA, ALPHA_KPTS, ALPHABETS_ID, ALPHABET_ORD, START_DF_IDX, STOP_DF_IDX
 from default import MARKER_NAME, EMPTY_CELL, NUM_OF_FRAMES, FRAME_VALID_KPTS, PAY_RATE, INFO_TEXT
+from default import AUTO_SAVE_FREQ, WINDOW_SHAPE, WINDOW_TOP_LEFT, FRM_WDT, FRM_HGT, MAX_KPT_ERROR
 
 
 def save_progress():
@@ -430,10 +430,10 @@ def display(windowName, displayImg, fid, wait=True):
             idx = ALPHABET_ORD.index(key)
             delete_keypoint_marking(windowName, fid, ALPHABETS_ID[idx])
         # if the 'r' or 'delete' key is pressed, delete entire keypoint markings of frame
-        if (key==ord("r") or key%255==46):# and _dictOfKpts[fid] is not None:
+        if (key==ord("r") or key%255==46):
             reset_markings(windowName, fid)
         # if the 'backspace' key is pressed undo most recent (last) keypoint marking of frame
-        elif (key==ord("u") or key%255==8):# and _dictOfKpts[fid] is not None:
+        elif (key==ord("u") or key%255==8):
             undo_previous_marking(windowName, fid)
         # if the 'b' or 'arrow up' key is pressed, increase contrast
         elif (key==ord("h") or key%255==38) and _contrastFtr<5:
@@ -536,7 +536,7 @@ def mouse_event(event, x, y, flags, param):
             _transMatrix = np.float32([[s, 0, x-s*x], [0, s, y-s*y], [0, 0, 1]])
             _mouseEventPack = [param, fid, 3] # 2: indicates zooming
 
-def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
+def iterate_over_scans(sampleMode, firstScan):
     global _dictOfKpts, _pendingKpts, _scanId, _curFrmImage, \
         _stayOnScan, _changeInScan, _moveDirection, _markerMetadata, \
         _annotatedKptsPerFrm, _projectedKptsPerFrm, _3dPose, _aggErrorPerKpt
@@ -551,6 +551,8 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
     skipScan = False if firstScan=='' else True
 
     for index, row in _dfKpt.iterrows():
+        if index<START_DF_IDX or index>STOP_DF_IDX:
+            break  # skip scans not within start-stop-range
         subset = row['Subset']
         if pd.isna(subset) or subset not in SUBSETS:
             break  # skip over scans not in subsets
@@ -565,8 +567,6 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
         else: skipScan = False
 
         # reset variables to default
-        #_dictOfKpts = dict()
-        #_pendingKpts = dict()
         _dictOfKpts.clear()
         _pendingKpts.clear()
         _3dPose[:,:] = -1
@@ -615,20 +615,13 @@ def iterate_over_scans(imagesRootDir, sampleMode, firstScan):
                     frmKptsDict[kpt] = list(K_DEFAULT)  # Default values for x,y,e=[-1,-1,0]
                 _dictOfKpts[fid] = frmKptsDict
 
-        #recordStatus = row['Status']
-        #if pd.isna(recordStatus): recordStatus = EMPTY_CELL
-        #if recordStatus in sampleMode:
         print('{:>4}. scanID: {}'.format(index, _scanId))
-        #scanPath = os.path.join(imagesRootDir, _scanId)
-
         cnt = 0
         t0 = time.time()
         _stayOnScan = True
         _changeInScan = False
         while _stayOnScan:
             fid = cnt % NUM_OF_FRAMES
-            #_curFrmImage = cv.imread(os.path.join(scanDirPath, '{}.png'.format(fid)))
-            #_curFrmImage = get_png_frame_image(imagesRootDir, _scanId, fid)
             _curFrmImage = get_npy_frame_image(_npyFile, scanNpIdx, fid)
             if _curFrmImage is not None:
                 annotate_frame(fid)
@@ -689,7 +682,7 @@ if __name__ == "__main__":
     periodic_save_thread.daemon = True
     periodic_save_thread.start()
 
-    iterate_over_scans(IMAGES_ROOT_DIR, RUN_MODES[mode], startScan)
+    iterate_over_scans(RUN_MODES[mode], startScan)
     if _updateSinceLastAutoSave: save_progress()
     cv.destroyAllWindows() # close all open windows
     os.remove(POSE3D_FIG_PATH)

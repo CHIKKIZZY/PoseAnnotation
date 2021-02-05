@@ -104,7 +104,7 @@ def runtime_args():
 def encode_dataset():
     # read and encode dataset
     subset = 'train'
-    dsHgt, dsWdt = 660, 512 #165, 128 # 110, 85
+    dsHgt, dsWdt = 330, 256 #165, 128 # 110, 85
     scanRootDir = '../../datasets/tsa/aps_images/dataset/{}_set'.format(subset)
     wrtPath = '../data/tsa/{}/{}Set_{}x{}.npy'.format(TSA_FORMAT, subset, dsHgt, dsWdt)
     dfKpt = pd.read_csv(TEMP_CSV_FILE)
