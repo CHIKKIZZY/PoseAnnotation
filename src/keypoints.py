@@ -629,9 +629,8 @@ def iterate_over_scans(sampleMode, firstScan):
                 _stayOnScan = False  # break out of infinte-loop
             cnt += _moveDirection # 1 or -1
         t1 = time.time()
-        os.remove(POSE3D_FIG_PATH)
-        if _changeInScan:
-            _markerMetadata['totalTime'] += t1-t0
+        if os.path.exists(POSE3D_FIG_PATH): os.remove(POSE3D_FIG_PATH)
+        if _changeInScan: _markerMetadata['totalTime'] += t1-t0
 
 
 if __name__ == "__main__":
