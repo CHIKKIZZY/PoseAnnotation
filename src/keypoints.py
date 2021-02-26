@@ -686,5 +686,5 @@ if __name__ == "__main__":
     iterate_over_scans(RUN_MODES[mode], startScan)
     if _updateSinceLastAutoSave: save_progress()
     cv.destroyAllWindows() # close all open windows
-    os.remove(POSE3D_FIG_PATH)
+    if os.path.exists(POSE3D_FIG_PATH): os.remove(POSE3D_FIG_PATH)
     plt.close()
