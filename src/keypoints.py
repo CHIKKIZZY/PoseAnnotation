@@ -252,6 +252,8 @@ def highlight_next_keypoint_suggested_position(frmImage, fid, nextKpt, radius=64
             radius = int(radius * _scaleFactor)
             x, y = transform_point(suggestedLoc[0], suggestedLoc[1], _transMatrix)
             cv.circle(mask, (x, y), radius, (255,255,255), thickness=-1, lineType=LINE2)
+            cv.line(mask, (x-radius+5, y), (x+radius-5, y), (96, 96, 96), thickness=2)
+            cv.line(mask, (x, y-radius+5), (x, y+radius-5), (96, 96, 96), thickness=2)
         return cv.addWeighted(frmImage, 0.8, mask, 0.2, 0)
     return frmImage
 
