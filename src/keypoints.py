@@ -252,6 +252,8 @@ def highlight_next_keypoint_suggested_position(frmImage, fid, nextKpt, radius=64
             radius = int(radius * _scaleFactor)
             x, y = transform_point(suggestedLoc[0], suggestedLoc[1], _transMatrix)
             cv.circle(mask, (x, y), radius, (255,255,255), thickness=-1, lineType=LINE2)
+            cv.line(mask, (x-radius+5, y), (x+radius-5, y), (96, 96, 96), thickness=2)
+            cv.line(mask, (x, y-radius+5), (x, y+radius-5), (96, 96, 96), thickness=2)
         return cv.addWeighted(frmImage, 0.8, mask, 0.2, 0)
     return frmImage
 
@@ -629,9 +631,8 @@ def iterate_over_scans(sampleMode, firstScan):
                 _stayOnScan = False  # break out of infinte-loop
             cnt += _moveDirection # 1 or -1
         t1 = time.time()
-        os.remove(POSE3D_FIG_PATH)
-        if _changeInScan:
-            _markerMetadata['totalTime'] += t1-t0
+        if os.path.exists(POSE3D_FIG_PATH): os.remove(POSE3D_FIG_PATH)
+        if _changeInScan: _markerMetadata['totalTime'] += t1-t0
 
 
 if __name__ == "__main__":

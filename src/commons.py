@@ -78,7 +78,7 @@ def get_program_instructions():
            "\tl/down-arrow : reduce image contrast\n" \
            "\tb            : brighten image\n" \
            "\td            : darken image\n" \
-           "\te/esc        : forcefully exit the program\n" \
+           "\tq/esc        : forcefully exit the program\n" \
            "\ti/space-bar  : display program help information\n" \
            " ----------------------------------------------------------------------------------\n"
 
