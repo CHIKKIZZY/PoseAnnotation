@@ -213,10 +213,10 @@ ALPHABET_ORD = convert_ord_key_identifier(ALPHABETS_ID)
 KPT_COLORS = set_colors(KEYPOINTS_ID, step=17)
 
 
-# REPLACE 'John' with your first name
-MARKER_NAME = 'John'
+# REPLACE 'Ugomars' with your first name
+MARKER_NAME = 'Ugomars'
 START_DF_IDX = 0
-STOP_DF_IDX = 99
+STOP_DF_IDX = 199
 MAX_AGG_ERROR = 200 # max allowed aggregate(sum) error per keypoint
 MAX_KPT_ERROR = 20  # max allowed error per keypoint annotation
 INFO_TEXT = '{nScans:>4} Completed Scans  Earnings: ${payCost:<6.2f}  ' \
