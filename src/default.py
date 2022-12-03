@@ -177,7 +177,7 @@ FRM_WDT = 512
 K_DEFAULT = (-1, -1, 0)
 BRIGT_INCR = 5
 BRCNT_INCR = 4
-SCALE_INCR = 0.5
+SCALE_INCR = 0.1
 CONTR_INCR = 0.5
 NUM_OF_FRAMES = 16
 AUTO_SAVE_FREQ = 180 # in secs
@@ -221,9 +221,10 @@ MAX_AGG_ERROR = 200 # max allowed aggregate(sum) error per keypoint
 MAX_KPT_ERROR = 20  # max allowed error per keypoint annotation
 INFO_TEXT = '{nScans:>4} Completed Scans  Earnings: ${payCost:<6.2f}  ' \
             'Avg. Error: {avgError:<4.1f}  Total Time: {time:.1f} hrs'
+npyHgt, npyWdt = 165, 128 # 330, 256
 
 IMAGES_ROOT_DIR = '../../datasets/tsa/aps_images/dataset/{}_set'.format(SUBSETS[0])
-IMAGES_NPFILE = '../data/tsa/{}/{}Set_{}x{}.npy'.format(TSA_FORMAT, SUBSETS[0], 660, 512)
+IMAGES_NPFILE = '../data/tsa/{}/{}Set_{}x{}.npy'.format(TSA_FORMAT, SUBSETS[0], npyHgt, npyWdt)
 KPTS_CSV_FILE = '../data/csvs/{}KeypointsAnnotations{}.csv'.format(TSA_FORMAT, '{}')
 TEMP_CSV_FILE = '../data/csvs/{}Template.csv'.format(TSA_FORMAT)
 METADATA_PATH = '../data/meta/meta{}.pickle'

@@ -68,24 +68,6 @@ def keypoint_error_magnitude(error):
     kptErrorPerFrm = np.sqrt(kptErrorPerFrm)
     return kptErrorPerFrm
 
-def error_per_keypoint(error, kptIndiciesList):
-    error = np.square(error).reshape((-1, 2))
-    print(error)
-    pntWgt = np.zeros(len(kptIndiciesList))
-    for i, kptIndicies in enumerate(kptIndiciesList):
-        kptError = np.sum(error[kptIndicies, :]) / 2
-        print(kptError)
-        pntWgt[i] = kptError
-    return pntWgt / (np.max(pntWgt) + 1e-7)
-
-def get_keypoint_indicies_list(pointIndices, nPoints):
-    '''Scale confidence scores to (0,1] per keypoint then return square root'''
-    kptIndiciesList = list()
-    for kptIdx in range(nPoints):
-        kptIndices = np.argwhere(pointIndices == kptIdx)
-        kptIndiciesList.append(kptIndices)
-    return kptIndiciesList
-
 def circular_translate_vec(thetaDeg, radius):
     diameter = 2 * radius
     assert (0 <= thetaDeg < 360) # theta must be in degrees
@@ -131,20 +113,6 @@ def wld2cam_transformation_matrix(angleDeg, radius):
     transformMtx[:3, :3] = rotateMtx
     transformMtx[:3, 3] = rotateMtx.dot(-translateVec)
     return transformMtx
-
-def get_annotated_keypoints(scanid, df):
-    kptsMeta = np.zeros((N_KEYPOINTS, NUM_OF_FRAMES, 2), dtype=np.float32)
-    isMarkedKpts = np.zeros((N_KEYPOINTS, NUM_OF_FRAMES), dtype=np.bool)
-    for fid in range(NUM_OF_FRAMES):
-        columnName = 'Frame{}'.format(fid)
-        cellEntry = df.loc[df['scanID']==scanid, columnName].values[0]
-        if not pd.isna(cellEntry):
-            frmKptsMeta = eval(cellEntry)  # eval() or ast.literal_eval()
-            for kptIdx in range(N_KEYPOINTS):
-                kpt = KPTS_INDX_ID[kptIdx]
-                kptsMeta[kptIdx, fid, :] = frmKptsMeta[kpt]
-                isMarkedKpts[kptIdx, fid] = True
-    return kptsMeta, isMarkedKpts
 
 def valid_observations(isMarkedKptsSet, nKpts, kptIdx=None):
     assert (nKpts!=1 or kptIdx is not None)  # p-->r
@@ -216,50 +184,6 @@ def organize_keypoints(frmsAnnotatedKpts, isMarkedKptsSet, kptIdx, zDepth):
     assert (np.all(points3d[:, 2] == 256))
     return cameraParams, points3d, cameraIndices, pointIndices, points2d, frmsOfEachKpt[0]
 
-def organize_all_scan_keypoints(scanAnnotatedKpts, isMarkedKptsSet, zDepth):
-    # from a multiple set of annotated keypoints of a scan
-    # Note. For orthographic projection, lens focal length is infinity
-    # scanAnnotatedKpts: shape: (14:kpts, 16/64:frames, 2:(x,y))
-    assert (scanAnnotatedKpts.dtype == np.float32)
-    assert (scanAnnotatedKpts.shape == (N_KEYPOINTS,16,2) or (N_KEYPOINTS,64,2))
-    nObservations, frmsOfEachKpt = valid_observations(isMarkedKptsSet, nKpts=N_KEYPOINTS)
-    nCameras = max(16, NUM_OF_FRAMES)
-
-    cameraIndices = np.empty(nObservations, dtype=np.int32)
-    pointIndices = np.empty(nObservations, dtype=np.int32)
-    points2d = np.empty((nObservations, 2), dtype=np.float32)
-    idx = 0
-
-    for kptIdx in range(N_KEYPOINTS):
-        pointIndex = kptIdx
-        for fid in range(NUM_OF_FRAMES):
-            x, y = scanAnnotatedKpts[kptIdx][fid]
-            if FRAME_VALID_KPTS[kptIdx][fid] and isMarkedKptsSet[kptIdx][fid]:
-                if nCameras==16 or NUM_OF_FRAMES==64: cameraIndex = fid
-                else: cameraIndex = (fid * 4) % 64 # nCameras==64 and NUM_OF_FRAMES==16
-                cameraIndices[idx] = cameraIndex
-                pointIndices[idx] = pointIndex
-                points2d[idx] = [x, y]
-                idx += 1
-    assert (idx == nObservations)
-
-    radius = zDepth / 2
-    cameraParams = define_camera_extrinsic_params(nCameras, radius)
-
-    points3d = np.empty((N_KEYPOINTS, 3), dtype=np.float32)
-    points3d[:, 2] = radius # Assumes perfect alignment, relative to ref. camera frame coordinate.
-    for kptIdx in range(N_KEYPOINTS):
-        x, y = scanAnnotatedKpts[kptIdx][0]
-        x = x - 256
-        points3d[kptIdx, :2] = [x, y]
-
-    assert (np.all(0 <= points2d[:, 0]) and np.all(points2d[:, 0] < 512))
-    assert (np.all(0 <= points2d[:, 1]) and np.all(points2d[:, 1] < 660))
-    assert (np.all(-256 <= points3d[:, 0]) and np.all(points3d[:, 0] < 256))
-    assert (np.all(0 < points3d[:, 1]) and np.all(points3d[:, 1] < 660))
-    assert (np.all(points3d[:, 2] == 256))
-    return cameraParams, points3d, cameraIndices, pointIndices, points2d
-
 def orthographic_project(points3dh, cameraParams, nObservations):
     """Convert 3-D points to 2-D by projecting onto images."""
     # points3dh.shape = (nObservations, 4)
@@ -320,32 +244,6 @@ def project_3dpoint_to_2dkeypoints(point3d, radius=256):
 
     return projectedKpts
 
-def project_all_3dpoints_to_2dkeypoints(points3d, error, radius=256):
-    wldKpt3dh = np.ones((4, 1), dtype=np.float32)
-    angleStep = 360 / NUM_OF_FRAMES
-    frmProjectedKpts = list()
-
-    for fid in range(NUM_OF_FRAMES):
-        projectedKpts = dict()
-        angleDeg = fid * angleStep
-        extTfmMtx = wld2cam_transformation_matrix(angleDeg, radius)
-        for kptIdx in range(N_KEYPOINTS):
-            kpt = KPTS_INDX_ID[kptIdx]
-            wldKpt3d = points3d[kptIdx][:, np.newaxis]
-            wldKpt3dh[:3, :] = wldKpt3d
-            camKpt3d = extTfmMtx.dot(wldKpt3dh)
-            xCam, yCam, zCam = np.around(camKpt3d, 0)
-            xImg = int(xCam + 256)
-            yImg = int(yCam)
-            conf = error[kptIdx]
-            assert (0 <= xImg < 512)
-            assert (0 <= yImg < 660)
-            assert (0 <= conf <= 1)
-            projectedKpts[kpt] = (xImg, yImg, conf)
-        frmProjectedKpts.append(projectedKpts)
-
-    return frmProjectedKpts
-
 
 def project_keypoints_from_3d(kptIdx, kpt2dPoints, isMarkedKpts, verbose=0, showInfo=False):
     frmValidObservations = np.sum(np.int32(FRAME_VALID_KPTS[kptIdx]))
@@ -390,52 +288,3 @@ def project_keypoints_from_3d(kptIdx, kpt2dPoints, isMarkedKpts, verbose=0, show
         print("Optimization took {0:.0f} seconds".format(t1 - t0))
 
     return projectedKpts, adjPoint3d, kptErrorPerFrm, frmsOfKpt
-
-
-def project_all_keypoints_from_3d(scanid, df, verbose=0, showInfo=False, plot3dpose=True):
-    frmValidObservations = np.sum(np.int32(FRAME_VALID_KPTS))
-
-    # initial estimated keypoints
-    annotatedKpts, isMarkedKpts = get_annotated_keypoints(scanid, df)
-    cameraParams, points3d, cameraIndices, pointIndices, points2d = \
-        organize_all_scan_keypoints(annotatedKpts, isMarkedKpts, zDepth=FRM_WDT)
-
-    nObservations = points2d.shape[0]
-    assert (frmValidObservations >= nObservations)
-    nCameras = cameraParams.shape[0]
-    nPoints = points3d.shape[0]
-    x0 = points3d.ravel()
-
-    # Bundle adjustment optimization
-    A = points_only_bundle_adjustment_sparsity(nPoints, pointIndices)
-    kptIndicesList = get_keypoint_indicies_list(pointIndices, nPoints)
-    t0 = time.time()
-    res = least_squares(res_func, x0,
-                jac_sparsity=A, verbose=verbose, x_scale='jac', ftol=1e-4, method='trf',
-                args=(cameraParams, nPoints, nObservations, cameraIndices, pointIndices, points2d))
-    t1 = time.time()
-
-    adjPoints3d = res.x.reshape((nPoints, 3))
-    kptsError = error_per_keypoint(res.fun, kptIndicesList)
-    frmProjectedKpts = project_all_3dpoints_to_2dkeypoints(adjPoints3d, kptsError)
-
-    if showInfo:
-        error = np.sum(np.square(res.fun)) / 2
-        residual_vec = np.int32(np.around(res.fun.reshape((nObservations, 2)), 0))
-        print('\nresiduals at solution:\nx\n{}\ny\n{}\nshape: {}, square sum: {}'
-              .format(residual_vec[:, 0], residual_vec[:, 1], residual_vec.shape, error))
-        print('\nerror at solution: {}'.format(res.cost))
-        print('\nalgorithm terminated because, {}'.format(LS_ALGO_STATUS[res.status]))
-        print("nCameras: {}".format(nCameras))
-        print("nPoints: {}".format(nPoints))
-        n = np.size(cameraParams) + np.size(points3d)
-        m = np.size(points2d)
-        print("Total number of parameters: {}".format(n))
-        print("Total number of residuals: {}".format(m))
-        print('3d points\n', np.int32(np.around(adjPoints3d, 0)))
-        print("Optimization took {0:.0f} seconds".format(t1 - t0))
-
-    if plot3dpose:
-        plot_3d_pose(adjPoints3d, error=kptsError)
-
-    return frmProjectedKpts, adjPoints3d

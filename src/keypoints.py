@@ -218,8 +218,7 @@ def image_transform(copiedImg, transMatrix):
     if np.array_equal(transMatrix, np.identity(3)):
         return copiedImg
     else:
-        rows = copiedImg.shape[0]
-        cols = copiedImg.shape[1]
+        rows, cols = copiedImg.shape[:2]
         return cv.warpAffine(copiedImg, transMatrix[:2, :], (cols, rows))
 
 def adjsut_brightness(image, brightness, contrast):
@@ -523,13 +522,13 @@ def mouse_event(event, x, y, flags, param):
         # EVENT_MOUSEWHEEL + and - values mean forward and backward scrolling, respectively
         zoom = False
         # zoom in
-        if flags >= 0 and _scaleFactor < 10:
+        if flags >= 0 and _scaleFactor < 5:
             zoom = True
-            _scaleFactor = max(1, _scaleFactor + SCALE_INCR)
+            _scaleFactor = max(0.05, _scaleFactor + SCALE_INCR)
         # zoom out
-        elif flags < 0 and _scaleFactor > 1:
+        elif flags < 0 and _scaleFactor > SCALE_INCR :
             zoom = True
-            _scaleFactor = max(1, _scaleFactor - SCALE_INCR)
+            _scaleFactor = max(0.05, _scaleFactor - SCALE_INCR)
         
         if zoom:
             # translation and scale transformation matrix.

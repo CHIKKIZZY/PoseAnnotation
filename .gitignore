@@ -1,5 +1,5 @@
 # User Defined Directories and Files
-src/.idea/
+*.idea/
 data/tsa/
 data/meta/*.png
 data/meta/*John*.pickle
