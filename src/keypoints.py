@@ -553,14 +553,16 @@ def iterate_over_scans(sampleMode, firstScan):
 
     for index, row in _dfKpt.iterrows():
         if index<START_DF_IDX or index>STOP_DF_IDX:
-            break  # skip scans not within start-stop-range
+            print('[INFO] You have exceeded the preset labelling limit of {} scans'.format(STOP_DF_IDX+1))
+            break  # only load scans within preset start-stop range
         subset = row['Subset']
         if pd.isna(subset) or subset not in SUBSETS:
-            break  # skip over scans not in subsets
+            continue  # skip over scans not in subsets
         recordStatus = row['Status']
+        print('recordStatus:{}'.format(recordStatus)) #***
         if pd.isna(recordStatus): recordStatus = EMPTY_CELL
         if recordStatus not in sampleMode:
-            break  # skip over scans not in record status type
+            continue  # skip over scans not in record status type
 
         _scanId = row['scanID']
         scanNpIdx = row['npIndex']
@@ -681,7 +683,7 @@ if __name__ == "__main__":
     periodic_save_thread = threading.Thread(target=periodic_save)
     periodic_save_thread.daemon = True
     periodic_save_thread.start()
-
+    print('RUN_MODES[{}]:{}'.format(mode, RUN_MODES[mode]))
     iterate_over_scans(RUN_MODES[mode], startScan)
     if _updateSinceLastAutoSave: save_progress()
     cv.destroyAllWindows() # close all open windows
